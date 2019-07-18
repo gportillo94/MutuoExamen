@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+    <head>
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/css/bootstrap.min.css">
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/js/bootstrap.min.js"></script>
+
+        <script>
+
+        //Variables globlaes
+
+        var AUTENTICACION;
+        var TIPOS_DOCUMENTOS;
+
+        //Constructores
+
+        function TiposDocumentos (catalogo) {
+            this.catalogo = catalogo;
+            this.MostrarTiposDocumento = function(){
+                var option = '';
+                for (var i=0 ; i<this.catalogo.length ; i++){
+                    option += '<option value="'+ this.catalogo[i].idTipoDocumento+ '">' + this.catalogo[i].descripcion + '</option>';
+                }
+                $('#tiposDocumentos').append(option);
+            };
+            this.ConsultarDescripcion = function(idTipoDocumento){
+                for (var i=0 ; i<this.catalogo.length ; i++){
+                    if(this.catalogo[i].idTipoDocumento == idTipoDocumento){
+                        return this.catalogo[i].descripcion;
+                    }
+                }
+            };
+        }
+
+        function Autenticacion(res){
+            this.token = res.token;
+            this.mensaje = res.mensaje;
+            this.autenticadoCorrecto = res.autenticadoCorrecto;    
+            this.MostrarDocumentos = function(){
+                $("#divLogin").hide();
+                $("#divDocumentos").show();
+                ConsultarTiposDocumentos();
+                ConsultarDocumentos();
+            };
+            this.MostrarError = function(){
+                alert(this.mensaje);
+            }
+            this.ObtenerEncabezados = function(){
+                return { Authorization: "Bearer " + this.token};
+            }
+        }
+
+        function ParametrosAjax(verbo, urlSufijo, fnExito, datos){
+        	this.type = verbo;
+        	
+			this.contentType = 'application/json';
+			this.dataType = 'json';
+            if(AUTENTICACION != undefined && AUTENTICACION.autenticadoCorrecto){
+                this.headers = AUTENTICACION.ObtenerEncabezados();  
+                this.url = 'http://localhost:8080/api/' + urlSufijo;
+            }
+            this.url = 'http://localhost:8080/' + urlSufijo;
+			this.success = fnExito;
+			this.error = ErrorAjax;
+			this.data = JSON.stringify(datos);
+        }
+
+        function Documento(){
+        	this.idTipoDocumento = $('#tiposDocumentos').val();
+        	this.contenido = 'void';
+        	this.nombre = $('#documento').prop('files')[0].name;
+        	this.Enviar = function  () {
+        		var doc = this;
+				var file = $('#documento').prop('files')[0];
+				var reader = new FileReader();
+				reader.readAsDataURL(file);
+				reader.onload = function (){
+					doc.contenido = reader.result;
+					var parametros = new ParametrosAjax('POST', 'documento', DocumentoGuardado, doc);
+					$.ajax(parametros);
+				};
+			}
+        }
+
+        function Usuario(){
+            this.username = $("#username").val();
+            this.password = $("#password").val();
+        }
+
+        //Funciones
+
+        function DocumentoGuardado(res){
+            console.log(res);
+            ConsultarDocumentos();
+        }
+
+        function ErrorAjax(err){
+            console.log('ErrorAjax');
+            console.log(err);
+        }
+
+		function GuardarDocumento(){
+		 	var doc = new Documento();
+			doc.Enviar();
+		}
+
+        function CrearRenglonDocumento(doc){
+            var renglon = "<tr>";
+            renglon += "<td>" + doc.nombre + "</td>";
+            renglon += "<td>" + TIPOS_DOCUMENTOS.ConsultarDescripcion(doc.idTipoDocumento) + "</td>";
+            renglon += "<td><a onclick='DescargarDocumento(" + doc.idDocumento + ");'> Descargar</td>";
+            renglon += "</tr>";
+            return renglon;
+        }
+
+        function DescargarDocumento(idDocumento){
+            var paramsAjax = new ParametrosAjax('GET', 'documento/' + idDocumento, function(res) {
+                const linkSource = res.contenido;
+                const downloadLink = document.createElement("a");
+                const fileName = "vct_illustration.pdf";
+                downloadLink.href = linkSource;
+                downloadLink.download = fileName;
+                downloadLink.click();
+            }, null);
+            console.log(paramsAjax);
+            $.ajax(paramsAjax);
+        }
+
+        function Login(){
+            var usuario = new Usuario();
+            var paramsAjax = new ParametrosAjax("POST", "login", function(res){
+                AUTENTICACION = new Autenticacion(res);
+                if(AUTENTICACION.autenticadoCorrecto){
+                    AUTENTICACION.MostrarDocumentos();
+                } else {
+                    AUTENTICACION.MostrarError();
+                }
+            }, usuario);
+            $.ajax(paramsAjax);
+        }
+
+        function ConsultarTiposDocumentos(){
+            var parametros = new ParametrosAjax('GET', 'tiposDocumento', function (res){
+                TIPOS_DOCUMENTOS = new TiposDocumentos(res);
+                TIPOS_DOCUMENTOS.MostrarTiposDocumento();
+            }, null);
+            $.ajax(parametros);
+        }
+
+        function ConsultarDocumentos(){
+            var parametros = new ParametrosAjax('GET', 'documento', function(res){
+                res.forEach(function(doc){
+                    var nuevoRenglon = CrearRenglonDocumento(doc);
+                    $('#misDocumentos tr:last').after(nuevoRenglon);
+                });
+            }, null);
+            $.ajax(parametros);
+        }
+	
+        </script>
+
+    </head>
+    <body>
+
+        <div id="divLogin" class="row" id="login">
+            <div class="col-md-4"></div>
+            <div class="col-md-4">
+                <label>Username</label>
+                <input type="text" id="username" class="form-control">
+                <label>Password</label>
+                <input type="text" id="password" class="form-control">
+                <button class="btn btn-primary" onclick="Login();">Iniciar sesion</button>
+            </div>
+            
+        </div>
+
+        <div id="divDocumentos" class="row" style="display: none;">
+            <div class="col-md-8">
+                <h2>Mis documentos</h2>
+                <table id="misDocumentos" class="table table-stripped table-bordered" >
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>Tipo de documento</th>
+                    </tr>
+                  </thead>
+                </table>
+            </div>
+            <div class="col-md-4">
+                <h2>Subir nuevo documento</h2>
+                <input type="file" id="documento" >
+                <select id="tiposDocumentos" class="form-control" ></select>
+                <button onclick="return GuardarDocumento();" class="btn btn-primary">Guardar</button>
+            </div>
+        </div>
+
+    </body>
+</html>
